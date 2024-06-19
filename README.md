@@ -1,5 +1,5 @@
 
-# HelloID-Conn-Prov-Target-Eduarte-Employee
+# HelloID-Conn-Prov-Target-Eduarte-Medewerker
 
 > [!IMPORTANT]
 > This connector is not tested with HelloID or with a Eduarte environment!
@@ -16,7 +16,7 @@
 
 ## Table of contents
 
-- [HelloID-Conn-Prov-Target-test](#helloid-conn-prov-target-test)
+- [HelloID-Conn-Prov-Target-Eduarte-Medewerker](#HelloID-Conn-Prov-Target-Eduarte-Medewerker)
   - [Table of contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Getting started](#getting-started)
