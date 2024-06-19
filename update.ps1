@@ -1,75 +1,171 @@
-######################################
-# HelloID-Conn-Prov-Target-Eduarte-Employee-Update
-#
-# Version: 1.0.0
-######################################
-# Initialize default values
-$config = $configuration | ConvertFrom-Json
-$p = $person | ConvertFrom-Json
-$aRef = $AccountReference | ConvertFrom-Json
-$success = $false
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
-
-# Account mapping
-$account = [PSCustomObject]@{
-    id                  = $p.ExternalId
-    gebruikersnaam      = $p.UserName
-    contactgegeven      = $p.Accounts.MicrosoftActiveDirectory.mail
-    achternaam          = $p.Name.FamilyName
-    actief              = $false
-    afkorting           = ""
-    begindatum          = $p.PrimaryContract.StartDate
-    einddatum           = $p.PrimaryContract.EndDate
-    geboorteAchternaam  = $p.Name.FamilyName
-    geboorteVoorvoegsel = $p.Name.FamilyNamePrefix
-    geslacht            = $p.Details.Gender
-    voornamen           = $p.GivenName
-    voorletters         = $p.Name.Initials
-    voorvoegsel         = ""
-    functie             = [PSCustomObject]@{
-        code = $p.PrimaryContract.Title.Code
-        naam = $p.PrimaryContract.Title.Name
-    }
-}
+#################################################
+# HelloID-Conn-Prov-Target-Eduarte-Medewerker-Update
+# PowerShell V2
+#################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
-# Set debug logging
-switch ($($config.IsDebug)) {
-    $true { $VerbosePreference = 'Continue' }
-    $false { $VerbosePreference = 'SilentlyContinue' }
-}
+#extra mapping to ensure the properties are in aplhabetical order
+$account = Sort-EduartePSCustomObjectProperties -InputObject $actionContext.Data
 
 #region functions
-function Resolve-Eduarte-EmployeeError {
+function Get-EduarteEmployee {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
-        [object]
-        $ErrorObject
+        [string]$userName
     )
     process {
-        $httpErrorObj = [PSCustomObject]@{
-            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
-            Line             = $ErrorObject.InvocationInfo.Line
-            ErrorDetails     = $ErrorObject.Exception.Message
-            FriendlyMessage  = $ErrorObject.Exception.Message
-        }
-        # Todo: The error message may need to be neatened for the friendlyerror message
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
-            $httpErrorObj.FriendlyMessage = $ErrorObject.ErrorDetails.Message
-        }
-        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException' -and (-not [string]::IsNullOrEmpty($ErrorObject.Exception.Response))) {
-            $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-            if ( $streamReaderResponse ) {
-                $httpErrorObj.ErrorDetails = $streamReaderResponse
-                $httpErrorObj.FriendlyMessage = $streamReaderResponse
+        try {
+            Write-Information "Getting Eduarte employee for: [$($userName)]"
+
+            [xml]$soapEnvelope = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
+    <soapenv:Header/>
+    <soapenv:Body>
+    <api:getMedewerkerMetGebruikersnaam>
+    </api:getMedewerkerMetGebruikersnaam>
+    </soapenv:Body>
+</soapenv:Envelope>'
+
+            $element = $soapEnvelope.envelope.body.ChildNodes | Where-Object { $_.LocalName -eq 'getMedewerkerMetGebruikersnaam' }
+            $element | Add-XmlElement -ElementName 'apiSleutel' -ElementValue "$($actionContext.Configuration.ApiKey)"
+            $element | Add-XmlElement -ElementName 'gebruikersnaam' -ElementValue "$($userName)"
+
+            $splatGetEmployee = @{
+                Method          = 'POST'
+                Uri             = "$($actionContext.Configuration.BaseUrl.TrimEnd('/'))/services/api/algemeen/medewerkers"
+                ContentType     = "text/xml"
+                Body            = $soapEnvelope.InnerXml
+                UseBasicParsing = $true
+            }
+
+            $response = Invoke-WebRequest @splatGetEmployee
+
+            # Check if the response is valid
+            if ($response.StatusCode -ne "200") {
+                Write-Error "Invalid response: $($response.StatusCode)"
+                return $null
+            }
+
+            $rawResponse = ([xml]$response.content).Envelope.body
+            $employee = $rawResponse.getMedewerkerMetGebruikersnaamResponse.medewerker
+
+            if ([String]::IsNullOrEmpty($employee)) {
+                return $null
+            }
+            else {
+                Write-Information "Correlated Eduarte employee for: [$($userName)]"
+
+                return $employee
             }
         }
-        Write-Output $httpErrorObj
+        catch {
+            throw $_
+        }
     }
+}
+
+function Set-EduarteEmployee {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [object]$employee,
+        [Parameter(Mandatory)]
+        [object]$Account
+    )
+    process {
+        try {
+            Write-Information "Updating Eduarte employee for: [$($Account.afkorting)]"
+
+            [xml]$soapEnvelope = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
+                <soapenv:Header/>
+                    <soapenv:Body>
+                       <api:update>
+                            <apiSleutel>?</apiSleutel>
+                            <gewijzigdeMedewerker></gewijzigdeMedewerker>
+                        </api:update>
+                    </soapenv:Body>
+                </soapenv:Envelope>'
+
+            # Add the apiSleutel
+            $soapEnvelope.envelope.body.update.apiSleutel = $actionContext.Configuration.ApiKey
+
+            # Add the medewerker id to the account object
+            $Account.id = $employee.id
+
+            # Remove contactgegevens to add later with the function Write-ContactGegevensToXmlDocument
+            $Account.PSObject.Properties.Remove('contactgegevens')
+
+            # Add account mapping attributes
+            $updateElement = $soapEnvelope.envelope.body.update.ChildNodes | Where-Object { $_.LocalName -eq 'gewijzigdeMedewerker' }
+            $Account | Write-ToXmlDocument -XmlDocument $soapEnvelope -XmlParentDocument $updateElement
+
+            # Add contactgegevens
+            Write-ContactGegevensToXmlDocument -ContactGegevens @($account.contactgegevens) -XmlElement $updateElement
+
+            $splatUpdateEmployee = @{
+                Method          = 'POST'
+                Uri             = "$($actionContext.Configuration.BaseUrl.TrimEnd('/'))/services/api/algemeen/medewerkers"
+                Body            = $soapEnvelope.InnerXml
+                ContentType     = "text/xml"
+                UseBasicParsing = $true
+            }
+
+            # Parse the response and get the generated account reference
+            $updateEmployeeResponse = Invoke-WebRequest @splatUpdateEmployee
+            $rawResponse = ([xml]$updateEmployeeResponse.content).Envelope.body
+            $employee = $rawResponse.updateResponse.medewerker
+
+            if ([String]::IsNullOrEmpty($employee)) {
+                return $null
+            }
+            else {
+                Write-Information "Updated Eduarte employee for: [$($Account.afkorting)]"
+
+                return $employee
+            }
+        }
+        catch {
+            Write-Error $_
+
+            return $null
+
+        }
+    }
+}
+
+function Sort-EduartePSCustomObjectProperties {
+    param (
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$InputObject
+    )
+
+    $sortedObject = [PSCustomObject]@{}
+
+    $sortedProperties = $InputObject.PSObject.Properties.Name | Sort-Object
+
+    foreach ($property in $sortedProperties) {
+        $value = $InputObject.$property
+
+        if ($value -is [PSCustomObject]) {
+            $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue (Sort-EduartePSCustomObjectProperties -InputObject $value)
+        } elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+            $sortedArray = @()
+            foreach ($item in $value) {
+                if ($item -is [PSCustomObject]) {
+                    $sortedArray += Sort-EduartePSCustomObjectProperties -InputObject $item
+                } else {
+                    $sortedArray += $item
+                }
+            }
+            $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue $sortedArray
+        } else {
+            $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue $value
+        }
+    }
+
+    return $sortedObject
 }
 
 function Write-ToXmlDocument {
@@ -90,7 +186,7 @@ function Write-ToXmlDocument {
         $XmlParentDocument
     )
     if ($Properties.GetType().Name -eq "PSCustomObject") {
-        $ParameterList = @{ }
+        $ParameterList = [ordered]@{}
         foreach ($prop in $Properties.PSObject.Properties) {
             $ParameterList[$prop.Name] = $prop.Value
         }
@@ -142,190 +238,161 @@ function Add-XmlElement {
         }
     }
 }
+
+function Write-ContactGegevensToXmlDocument {
+    [Cmdletbinding()]
+    param(
+        [Parameter(Mandatory)]
+        $ContactGegevens,
+
+        [Parameter(Mandatory)]
+        [System.Xml.XmlElement]
+        $XmlElement
+    )
+    # Add contactgegevens
+    $contactgegevensElement = $XmlElement.ChildNodes | Where-Object { $_.LocalName -eq 'contactgegevens' }
+
+    if ($null -eq $contactgegevensElement) {
+        throw "Could not find the contactgegevens element"
+    }
+
+    foreach ($contactgegeven in $ContactGegevens) {
+        # Create the contactgegeven element
+        $contactgegevenElement = $contactgegevensElement.OwnerDocument.CreateElement("contactgegeven")
+        $null = $contactgegevensElement.AppendChild($contactgegevenElement)
+
+        Add-XmlElement -XmlParentDocument $contactgegevenElement -ElementName 'contactgegeven' -ElementValue "$($contactgegeven.waarde)"
+
+        # Create the soort element
+        $soortElement = $contactgegevensElement.OwnerDocument.CreateElement("soort")
+        $null = $contactgegevenElement.AppendChild($soortElement)
+
+        Add-XmlElement -XmlParentDocument $soortElement -ElementName 'code' -ElementValue "$($contactgegeven.code)"
+        Add-XmlElement -XmlParentDocument $soortElement -ElementName 'naam' -ElementValue "$($contactgegeven.naam)"
+        Add-XmlElement -XmlParentDocument $contactgegevenElement -ElementName 'geheim' -ElementValue "$($contactgegeven.geheim)"
+    }
+}
+
+function Resolve-Eduarte-EmployeeError {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [object]
+        $ErrorObject
+    )
+    process {
+        $httpErrorObj = [PSCustomObject]@{
+            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
+            Line             = $ErrorObject.InvocationInfo.Line
+            ErrorDetails     = $ErrorObject.Exception.Message
+            FriendlyMessage  = $ErrorObject.Exception.Message
+        }
+        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
+            $httpErrorObj.FriendlyMessage = $ErrorObject.ErrorDetails.Message
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException' -and (-not [string]::IsNullOrEmpty($ErrorObject.Exception.Response))) {
+            $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+            if ( $streamReaderResponse ) {
+                $httpErrorObj.ErrorDetails = $streamReaderResponse
+                $httpErrorObj.FriendlyMessage = $streamReaderResponse
+            }
+        }
+        Write-Output $httpErrorObj
+    }
+}
 #endregion
 
-# Begin
 try {
-    if ([string]::IsNullOrEmpty($($aRef))) {
+    # Verify if [aRef] has a value
+    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'
     }
 
-    Write-Verbose "Verifying if a Eduarte employee account for [$($p.DisplayName)] exists"
-    [xml]$soapEnvelopegetMedewerkerMetId = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
-        <soapenv:Header/>
-        <soapenv:Body>
-        <api:getMedewerkerMetId>
-        </api:getMedewerkerMetId>
-        </soapenv:Body>
-    </soapenv:Envelope>'
-    $getMedewerkerMetIdElement = $soapEnvelopegetMedewerkerMetId.envelope.body.ChildNodes | Where-Object { $_.LocalName -eq 'getMedewerkerMetId' }
-    $getMedewerkerMetIdElement | Add-XmlElement -ElementName 'apiSleutel' -ElementValue "$($config.ApiKey)"
-    $getMedewerkerMetIdElement | Add-XmlElement -ElementName 'personeelsnummer' -ElementValue "$($aRef)"
+    Write-Information "Verifying if a Eduarte-employee (medewerker) account for [$($personContext.Person.DisplayName)] exists"
+    $correlatedAccount = Get-EduarteEmployee -userName $actionContext.References.Account
 
-    $splatGetEmployee = @{
-        Method      = 'Post'
-        Uri         = "$($config.BaseUrl.TrimEnd('/'))/services/api/algemeen/medewerkers"
-        ContentType = "text/xml" 
-        Body        = $soapEnvelopegetMedewerkerMetId.InnerXml
-    }
-    $responseEmployee = Invoke-RestMethod @splatGetEmployee -Verbose:$false
+    $outputContext.PreviousData = $correlatedAccount
 
-    # Verify if the account must be updated
-    # Todo change update check to your needs
-    $propertiesChanged = $false
-    $changedAccount = [PSCustomObject]@{}
-
-    # compare voor het plate object en functie
-    foreach ($prop in ($account | Select-Object * -ExcludeProperty contactgegeven, functie).psobject.properties ) {
-        if ($responseEmployee.Envelope.body.update.gewijzigdeMedewerker."$($prop.name)" -eq $prop.value) {
-            # Write-Verbose   "Noting Changed" -verbose
-        }
-        else {
-            # Write-Verbose "property changed: $($prop.name)" -verbose
-            $propertiesChanged = $true
-        }  
-        # write-verbose "old value: $($responseEmployee.Envelope.body.update.gewijzigdeMedewerker."$($prop.name)")" -verbose
-        # Todo check if it is necessary to add not changed value's to the XML object, otherwise remove the line below.
-        $changedAccount | Add-Member -MemberType NoteProperty -Name $prop.name -Value $prop.value  
-    }
-    
-    if ($responseEmployee.Envelope.body.update.gewijzigdeMedewerker.functie.naam -eq $account.functie.naam) {
-        # Todo check if it is necessary to add not changed value's to the XML object, otherwise remove the line below.
-        $changedAccount | Add-Member -NotePropertyMembers @{
-            functie = $account.functie
-        }
-    }
-    else {
-        $propertiesChanged = $true
-        $changedAccount | Add-Member -NotePropertyMembers @{
-            functie = $account.functie
-        }        
-    }    
-
-    # compare voor het email object
-    # Todo: Check if the email adres can be found in the [contactgegevens]
-    $mailProperty = $responseEmployee.contactgegevens.contactgegeven | Where-Object { $_.soort.naam -eq 'mail' }
-    if ((-not [string]::IsNullOrEmpty($account.contactgegeven)) -and ($mailProperty.contactgegeven -ne $account.contactgegeven)) {
-        $changedEmail = $account.email
-    }
-        
-    if ($propertiesChanged -or (-not [string]::IsNullOrEmpty($($changedEmail)))) {
-        $action = 'Update'
-        $dryRunMessage = "Account property(s) required to update: [$($changedAccount.psobject.properties.name -join ",")]"
-    }
-    elseif ((-not($propertiesChanged) -and ([string]::IsNullOrEmpty($($changedEmail))) -and ($responseEmployee))) {
-        $action = 'NoChanges'
-        $dryRunMessage = 'No changes will be made to the account during enforcement'
-    }
-    elseif ($null -eq $responseEmployee) {
+if ($null -ne $correlatedAccount) {
+        # TODO Always compare the account against the current account in target system
+        # $splatCompareProperties = @{
+        #     ReferenceObject  = @($correlatedAccount.PSObject.Properties)
+        #     DifferenceObject = @($account.PSObject.Properties)
+        # }  
+        # $propertiesChanged = Compare-Object @splatCompareProperties -PassThru | Where-Object { $_.SideIndicator -eq '=>' }
+        # if ($propertiesChanged) {
+        #     $action = 'UpdateAccount'
+        #     $dryRunMessage = "Account property(s) required to update: $($propertiesChanged.Name -join ', ')"
+        # } else {
+        #     $action = 'NoChanges'
+        #     $dryRunMessage = 'No changes will be made to the account during enforcement'
+        # }
+        $action = 'UpdateAccount'
+        $dryRunMessage = "Employee account will be updated during enforcement"
+    } else {
         $action = 'NotFound'
-        $dryRunMessage = "Eduarte employee account for: [$($p.DisplayName)] not found. Possibly deleted"
+        $dryRunMessage = "Eduarte-employee (medewerker) account for: [$($personContext.Person.DisplayName)] not found. Possibly deleted."
     }
 
-    # Add an auditMessage showing what will happen during enforcement
-    if ($dryRun -eq $true) {
-        Write-Warning "[DryRun] $dryRunMessage"
+    # Add a message and the result of each of the validations showing what will happen during enforcement
+    if ($actionContext.DryRun -eq $true) {
+        Write-Information "[DryRun] $dryRunMessage"
     }
 
     # Process
-    if (-not($dryRun -eq $true)) {
+    if (-not($actionContext.DryRun -eq $true)) {
         switch ($action) {
-            'Update' {
-                Write-Verbose "Updating Eduarte employee account with accountReference: [$aRef]"
-                # Todo check if update adds another contactgegeven or that the existing contactgegeven is updated
-                [xml]$soapEnvelopeUpdateEmployee = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.umra.webservices.eduarte.topicus.nl/">
-                    <soapenv:Header/>
-                    <soapenv:Body>
-                        <update xmlns="http://api.algemeen.webservices.eduarte.topicus.nl/">
-                            <apiSleutel>X</apiSleutel>
-                            <gewijzigdeMedewerker xmlns="">
-                                <contactgegevens>
-                                    <contactgegeven>
-                                        <contactgegeven>XXXXXX</contactgegeven>
-                                        <soort>
-                                            <code>1</code>
-                                            <naam>mail</naam>
-                                        </soort>
-                                        <geheim>false</geheim>
-                                    </contactgegeven>
-                                </contactgegevens>
-                            </gewijzigdeMedewerker>
-                        </update>
-                    </soapenv:Body>
-                </soapenv:Envelope>'
-                $soapEnvelopeUpdateEmployee.envelope.body.update.apiSleutel = "$($config.ApiKey)"
+            'UpdateAccount' {
+                Write-Information "Updating Eduarte-employee (medewerker) account with accountReference: [$($actionContext.References.Account)]"
 
-                $updateElement = $soapEnvelopeUpdateEmployee.envelope.body.update.gewijzigdeMedewerker
-                ($changedAccount | Select-Object * -ExcludeProperty "contactgegeven") | Write-ToXmlDocument -XmlDocument $soapEnvelopeUpdateEmployee -XmlParentDocument $updateElement
+                $accountWithoutUser = ($account | Select-Object -Property * -ExcludeProperty gebruiker)
+                $null = Set-EduarteEmployee -Employee $correlatedAccount -Account $accountWithoutUser
 
-                # Todo: Check if the email adres can be found in the [contactgegevens]
-                if (-not [string]::IsNullOrEmpty($($changedEmail))) {
-                    $soapEnvelopeUpdateEmployee.envelope.body.update.gewijzigdeMedewerker.contactgegevens.contactgegeven.contactgegeven = "$($account.contactgegeven)"
-                }
-               
-                $splatSetEmployee = @{
-                    Method      = 'Post'
-                    Uri         = "$($config.BaseUrl.TrimEnd('/'))/services/api/algemeen/medewerkers"
-                    Body        = $soapEnvelopeUpdateEmployee.InnerXml
-                    ContentType = "text/xml"
-                }
-                # Todo: Check possible the response!
-                $null = Invoke-RestMethod @splatSetEmployee -Verbose:$false
-
-                $success = $true
-                $auditLogs.Add([PSCustomObject]@{
-                        Message = 'Update account was successful'
-                        IsError = $false
-                    })
+                $outputContext.Success = $true
+                # TODO Message = "Update account was successful, Account property(s) updated: [$($propertiesChanged.name -join ',')]"
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = 'Update account was successful'
+                    IsError = $false
+                })
                 break
             }
 
             'NoChanges' {
-                Write-Verbose "No changes to Eduarte employee account with accountReference: [$aRef]"
+                Write-Information "No changes to Eduarte-employee (medewerker) account with accountReference: [$($actionContext.References.Account)]"
 
-                $success = $true
-                $auditLogs.Add([PSCustomObject]@{
-                        Message = 'No changes will be made to the account during enforcement'
-                        IsError = $false
-                    })
+                $outputContext.Success = $true
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = 'No changes will be made to the account during enforcement'
+                    IsError = $false
+                })
                 break
             }
 
             'NotFound' {
-                $success = $false
-                $auditLogs.Add([PSCustomObject]@{
-                        Message = "Eduarte employee account for: [$($p.DisplayName)] not found. Possibly deleted"
-                        IsError = $true
-                    })
+                $outputContext.Success  = $false
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "Eduarte-employee (medewerker) account with accountReference: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted, or the account is not correlated"
+                    IsError = $true
+                })
                 break
             }
         }
     }
-}
-catch {
-    $success = $false
+} catch {
+    $outputContext.Success  = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-Eduarte-EmployeeError -ErrorObject $ex
-        $auditMessage = "Could not update Eduarte employee account. Error: $($errorObj.FriendlyMessage)"
-        Write-Verbose "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        $errorObj = Resolve-Eduarte-MedewerkerError -ErrorObject $ex
+        $auditMessage = "Could not update Eduarte-employee (medewerker) account. Error: $($errorObj.FriendlyMessage)"
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+    } else {
+        $auditMessage = "Could not update Eduarte-employee (medewerker) account. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    else {
-        $auditMessage = "Could not update Eduarte employee account. Error: $($ex.Exception.Message)"
-        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-    }
-    $auditLogs.Add([PSCustomObject]@{
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditMessage
             IsError = $true
         })
-    # End
-}
-finally {
-    $result = [PSCustomObject]@{
-        Success   = $success
-        Account   = $account
-        Auditlogs = $auditLogs
-    }
-    Write-Output $result | ConvertTo-Json -Depth 10
 }
