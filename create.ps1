@@ -6,11 +6,8 @@
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
-#extra mapping to ensure the properties are in aplhabetical order
-$account = Sort-EduartePSCustomObjectProperties -InputObject $actionContext.Data
- 
 #region functions
-function Get-EduarteEmployee {
+function Get-EduarteEmployeeMetGebruikersnaam {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
@@ -21,12 +18,12 @@ function Get-EduarteEmployee {
             Write-Information "Getting Eduarte employee for: [$($userName)]"
 
             [xml]$soapEnvelope = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
-    <soapenv:Header/>
-    <soapenv:Body>
-    <api:getMedewerkerMetGebruikersnaam>
-    </api:getMedewerkerMetGebruikersnaam>
-    </soapenv:Body>
-</soapenv:Envelope>'
+                <soapenv:Header/>
+                <soapenv:Body>
+                <api:getMedewerkerMetGebruikersnaam>
+                </api:getMedewerkerMetGebruikersnaam>
+                </soapenv:Body>
+            </soapenv:Envelope>'
 
             $element = $soapEnvelope.envelope.body.ChildNodes | Where-Object { $_.LocalName -eq 'getMedewerkerMetGebruikersnaam' }
             $element | Add-XmlElement -ElementName 'apiSleutel' -ElementValue "$($actionContext.Configuration.ApiKey)"
@@ -35,7 +32,7 @@ function Get-EduarteEmployee {
             $splatGetEmployee = @{
                 Method          = 'POST'
                 Uri             = "$($actionContext.Configuration.BaseUrl.TrimEnd('/'))/services/api/algemeen/medewerkers"
-                ContentType     = "text/xml"
+                ContentType     = 'text/xml;charset=utf-8'
                 Body            = $soapEnvelope.InnerXml
                 UseBasicParsing = $true
             }
@@ -53,20 +50,71 @@ function Get-EduarteEmployee {
 
             if ([String]::IsNullOrEmpty($medewerker)) {
                 return $null
-            }
-            else {
+            } else {
                 Write-Information "Correlated Eduarte-employee (medewerker) for: [$($userName)]"
 
                 return $medewerker
             }
-        }
-        catch {
+        } catch {
             throw $_
         }
     }
 }
 
-function New-EduarteEmployee{
+function Get-EduarteMedewerkerMetAfkorting {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]$Afkorting
+    )
+    process {
+        try {
+            Write-Verbose "Getting Eduarte employee for: [$($Afkorting)]"
+
+            [xml]$soapEnvelope = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
+                <soapenv:Header/>
+                <soapenv:Body>
+                <api:getMedewerkerMetAfkorting>
+                </api:getMedewerkerMetAfkorting>
+                </soapenv:Body>
+            </soapenv:Envelope>'
+
+            $element = $soapEnvelope.envelope.body.ChildNodes | Where-Object { $_.LocalName -eq 'getMedewerkerMetAfkorting' }
+            $element | Add-XmlElement -ElementName 'apiSleutel' -ElementValue "$($actionContext.Configuration.ApiKey)"
+            $element | Add-XmlElement -ElementName 'afkorting' -ElementValue "$($Afkorting)"
+
+            $splatGetEmployee = @{
+                Method          = 'POST'
+                Uri             = "$($actionContext.Configuration.BaseUrl.TrimEnd('/'))/services/api/algemeen/medewerkers"
+                ContentType     = 'text/xml;charset=utf-8'
+                Body            = $soapEnvelope.InnerXml
+                UseBasicParsing = $true
+            }
+
+            $response = Invoke-WebRequest @splatGetEmployee
+
+            # Check if the response is valid
+            if ($response.StatusCode -ne '200') {
+                Write-Error "Invalid response: $($response.StatusCode)"
+                return $null
+            }
+
+            $rawResponse = ([xml]$response.content).Envelope.body
+            $medewerker = $rawResponse.getMedewerkerMetAfkortingResponse.medewerker
+
+            if ([String]::IsNullOrEmpty($medewerker)) {
+                return $null
+            } else {
+                Write-Verbose "Correlated Eduarte employee for: [$($Afkorting)]"
+                return $medewerker
+            }
+        } catch {
+            throw $_
+        }
+    }
+}
+
+function New-EduarteEmployee {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
@@ -93,19 +141,18 @@ function New-EduarteEmployee{
             $element = $soapEnvelope.envelope.body.create.ChildNodes | Where-Object { $_.LocalName -eq 'nieuweMedewerker' }
 
             # Remove id attribute, must be empty on create
-            $Account.PSObject.Properties.Remove('id')
+            $null = $Account.PSObject.Properties.Remove('id')
 
             # Remove contactgegevens to add later with the function Write-ContactGegevensToXmlDocument
-            $Account.PSObject.Properties.Remove('contactgegevens')
-            $Account | Write-ToXmlDocument -XmlDocument $soapEnvelope -XmlParentDocument $element
+            $Account | Select-Object * -ExcludeProperty contactgegevens | Write-ToXmlDocument -XmlDocument $soapEnvelope -XmlParentDocument $element | Out-Null
 
             # Add contactgegevens
-            Write-ContactGegevensToXmlDocument -ContactGegevens @($account.contactgegevens) -XmlElement $updateElement
+            Write-ContactGegevensToXmlDocument -ContactGegevens @($account.contactgegevens) -XmlElement $element  | Out-Null
 
             $splatCreateEmployee = @{
                 Method          = 'POST'
                 Uri             = "$($actionContext.Configuration.BaseUrl.TrimEnd('/'))/services/api/algemeen/medewerkers"
-                ContentType     = "text/xml"
+                ContentType     = 'text/xml;charset=utf-8'
                 Body            = $soapEnvelope.InnerXml
                 UseBasicParsing = $true
             }
@@ -117,85 +164,13 @@ function New-EduarteEmployee{
 
             if ([String]::IsNullOrEmpty($medewerker)) {
                 return $null
-            }
-            else {
+            } else {
                 Write-Information "Created Eduarte-employee (medewerker) for: [$($Account.afkorting)]"
                 return $medewerker
             }
-        }
-        catch {
-            Write-Error $_
-            return $null
-        }
-    }
-}
-
-function Get-EduarteUser {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)]
-        [string]$Username
-    )
-    process {
-        try {
-            Write-Information "Getting Eduarte-user (gebruiker) for: [$($Username)]"
-
-            # Try to correlate
-            [xml]$soapEnvelope = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
-    <soapenv:Header/>
-    <soapenv:Body>
-    <api:getGebruikerRollen>
-    </api:getGebruikerRollen>
-    </soapenv:Body>
-</soapenv:Envelope>'
-
-            $element = $soapEnvelope.envelope.body.ChildNodes | Where-Object { $_.LocalName -eq 'getGebruikerRollen' }
-            $element | Add-XmlElement -ElementName 'apiSleutel' -ElementValue "$($actionContext.Configuration.ApiKey)"
-            $element | Add-XmlElement -ElementName 'gebruikernaam' -ElementValue $Username
-
-            $splatParams = @{
-                Method          = 'POST'
-                Uri             = "$($actionContext.Configuration.BaseUrl.TrimEnd('/'))/services/api/algemeen/gebruikers"
-                ContentType     = "text/xml"
-                Body            = $soapEnvelope.InnerXml
-                UseBasicParsing = $true
-            }
-
-            try {
-                $response = Invoke-WebRequest @splatParams
-
-                # Check if the response is valid
-                if ($response.StatusCode -ne "200") {
-                    Write-Error "Invalid response: $($response.StatusCode)"
-                    return $null
-                }
-
-                $rawResponse = ([xml]$response.content).Envelope.body
-
-                if ([String]::IsNullOrEmpty($rawResponse.getGebruikerRollenResponse)) {
-                    return $null
-                }
-                else {
-                    Write-Information "Correlated Eduarte-user (gebruiker) for: [$($Username)]"
-
-                    return $Username
-                }
-
-                return $null
-            }
-            catch {
-                if ($_.ErrorDetails -match "niet gevonden") {
-                    return $null
-                }
-                else {
-                    throw $_.ErrorDetails
-                }
-            }
-        }
-        catch {
+        } catch {
             throw $_
         }
-
     }
 }
 
@@ -212,28 +187,27 @@ function New-EduarteUser {
             Write-Information "Creating Eduarte-user (gebruiker) for: [$($User.gebruikernaam)]"
 
             [xml]$soapEnvelope = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
-    <soapenv:Header/>
-    <soapenv:Body>
-    <api:createMedewerkerGebruiker>
-        <apiSleutel>X</apiSleutel>
-    </api:createMedewerkerGebruiker>
-    </soapenv:Body>
-</soapenv:Envelope>'
+                <soapenv:Header/>
+                <soapenv:Body>
+                <api:createMedewerkerGebruiker>
+                    <apiSleutel>X</apiSleutel>
+                    <gebruikernaam>X</gebruikernaam>
+                    <wachtwoord>X</wachtwoord>
+                    <medewerker>X</medewerker>
+                </api:createMedewerkerGebruiker>
+                </soapenv:Body>
+            </soapenv:Envelope>'
 
-            # Add the apiSleutel
+            # Add the apiSleutel (Not Dynamic because the order is not alphabetical)
             $soapEnvelope.envelope.body.createMedewerkerGebruiker.apiSleutel = "$($actionContext.Configuration.ApiKey)"
-
-            # Set the medewerker id
-            $User.medewerker = $Employee.id
-
-            # Add account mapping attributes
-            $element = $soapEnvelope.envelope.body.FirstChild
-            $User | Write-ToXmlDocument -XmlDocument $soapEnvelope -XmlParentDocument $element
+            $soapEnvelope.envelope.body.createMedewerkerGebruiker.gebruikernaam = "$($User.gebruikernaam)"
+            $soapEnvelope.envelope.body.createMedewerkerGebruiker.wachtwoord = "$($user.wachtwoord)"
+            $soapEnvelope.envelope.body.createMedewerkerGebruiker.medewerker = "$($Employee.id)"
 
             $splatParams = @{
                 Method          = 'Post'
                 Uri             = "$($actionContext.Configuration.BaseUrl.TrimEnd('/'))/services/api/algemeen/gebruikers"
-                ContentType     = "text/xml"
+                ContentType     = 'text/xml;charset=utf-8'
                 Body            = $soapEnvelope.InnerXml
                 UseBasicParsing = $true
             }
@@ -252,23 +226,14 @@ function New-EduarteUser {
                 }
 
                 return $User.gebruikernaam
-            }
-            catch {
+            } catch {
                 if ($_.ErrorDetails -match "heeft reeds een account") {
-                    $auditMessage = "Could not create Eduarte-user (gebruiker) account '$($User.gebruikernaam)'. Medewerker already has an (other) account: $($_.ErrorDetails)"
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = $auditMessage
-                            IsError = $true
-                        })
-
-                    Write-Warning $auditMessage
-                }
-                else {
+                    throw "Could not create Eduarte-user (gebruiker) account '$($User.gebruikernaam)'. Medewerker already has an (other) account: $($_.ErrorDetails)"
+                } else {
                     throw $_.ErrorDetails
                 }
             }
-        }
-        catch {
+        } catch {
             throw $_
         }
     }
@@ -286,7 +251,6 @@ function Sort-EduartePSCustomObjectProperties {
 
     foreach ($property in $sortedProperties) {
         $value = $InputObject.$property
-
         if ($value -is [PSCustomObject]) {
             $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue (Sort-EduartePSCustomObjectProperties -InputObject $value)
         } elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
@@ -303,7 +267,6 @@ function Sort-EduartePSCustomObjectProperties {
             $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue $value
         }
     }
-
     return $sortedObject
 }
 
@@ -329,8 +292,7 @@ function Write-ToXmlDocument {
         foreach ($prop in $Properties.PSObject.Properties) {
             $ParameterList[$prop.Name] = $prop.Value
         }
-    }
-    else {
+    } else {
         $ParameterList = $Properties
     }
     foreach ($param in $ParameterList.GetEnumerator()) {
@@ -338,8 +300,7 @@ function Write-ToXmlDocument {
             $parent = $XmlDocument.CreateElement($param.Name)
             $ParameterList[$param.Name] | Write-ToXmlDocument -XmlDocument  $XmlDocument -XmlParentDocument $parent
             $null = $XmlParentDocument.AppendChild($parent)
-        }
-        else {
+        } else {
             $child = $XmlDocument.CreateElement($param.Name)
             $null = $child.InnerText = "$($param.Value)"
             $null = $XmlParentDocument.AppendChild($child)
@@ -371,8 +332,7 @@ function Add-XmlElement {
             $child = $XmlParentDocument.OwnerDocument.CreateElement($ElementName)
             $null = $child.InnerText = "$ElementValue"
             $null = $XmlParentDocument.AppendChild($child)
-        }
-        catch {
+        } catch {
             $PSCmdlet.ThrowTerminatingError($_)
         }
     }
@@ -392,7 +352,12 @@ function Write-ContactGegevensToXmlDocument {
     $contactgegevensElement = $XmlElement.ChildNodes | Where-Object { $_.LocalName -eq 'contactgegevens' }
 
     if ($null -eq $contactgegevensElement) {
-        throw "Could not find the contactgegevens element"
+        # Find the next property alphabetically after the begin letter of contactgegevens to insert the property contactGegevens before this element
+        $refElement = ($XmlElement.ChildNodes | Sort-Object LocalName | Where-Object { $_.LocalName -gt 'c' } | Select-Object -First 1)
+
+        $child = $XmlElement.OwnerDocument.CreateElement('contactgegevens')
+        $XmlElement.InsertBefore($child, $refElement)
+        $contactgegevensElement = $XmlElement.ChildNodes | Where-Object { $_.LocalName -eq 'contactgegevens' }
     }
 
     foreach ($contactgegeven in $ContactGegevens) {
@@ -429,8 +394,7 @@ function Resolve-Eduarte-EmployeeError {
         if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
             $httpErrorObj.FriendlyMessage = $ErrorObject.ErrorDetails.Message
-        }
-        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException' -and (-not [string]::IsNullOrEmpty($ErrorObject.Exception.Response))) {
+        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException' -and (-not [string]::IsNullOrEmpty($ErrorObject.Exception.Response))) {
             $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
             if ( $streamReaderResponse ) {
                 $httpErrorObj.ErrorDetails = $streamReaderResponse
@@ -444,16 +408,21 @@ function Resolve-Eduarte-EmployeeError {
 
 try {
     # Initial Assignments
-    $outputContext.AccountReference = 'Currently not available'
+    $outputContext.AccountReference = [pscustomobject]@{
+        id   = 'Currently not available'
+        user = 'Currently not available'
+    }
+
+    # Extra mapping to ensure the properties are in alphabetical order
+    $account = Sort-EduartePSCustomObjectProperties -InputObject $actionContext.Data
 
     if ([String]::IsNullOrEmpty($account.gebruikersnaam)) {
-        throw "Gebruikersnaam is empty, cannot continue..."
+        throw 'Gebruikersnaam is empty, cannot continue...'
     }
 
     if ([String]::IsNullOrEmpty($account.afkorting)) {
-        throw "Afkorting is empty, cannot continue..."
+        throw 'Afkorting is empty, cannot continue...'
     }
-
 
     # Validate correlation configuration
     if ($actionContext.CorrelationConfiguration.Enabled) {
@@ -467,13 +436,27 @@ try {
             throw 'Correlation is enabled but [accountFieldValue] is empty. Please make sure it is correctly mapped'
         }
 
-        $correlatedEmployeeAccount = Get-EduarteEmployee -userName $correlationValue
+        if ($correlationField -eq 'afkorting') {
+            $correlatedEmployeeAccount = Get-EduarteMedewerkerMetAfkorting -Afkorting $correlationValue
+        } elseif ($correlationField -eq 'gebruikersnaam') {
+            $correlatedEmployeeAccount = Get-EduarteEmployeeMetGebruikersnaam -userName $correlationValue
+        } else {
+            throw "No valid correlate implementation found for correlationField [$($correlationField )]"
+        }
+
+
         $account.id = $correlatedEmployeeAccount.id
         $account.gebruiker.medewerker = $correlatedEmployeeAccount.id
 
-        $correlatedUserAccount = Get-EduarteUser -Username $account.gebruiker.gebruikernaam
+        if (-not [string]::IsNullOrEmpty($account.gebruiker.gebruikernaam) ) {
+            $correlatedUserAccount = $true
+            if ($null -eq $correlatedAccount.gebruikersnaam ) {
+                $correlatedUserAccount = $false
+            } elseif ($account.gebruiker.gebruikernaam -ne $correlatedAccount.gebruikersnaam ) {
+                throw "HelloID provided username [$($account.gebruiker.gebruikernaam)] differs from the existing username [$($correlatedAccount.gebruikersnaam)] of the correlated account"
+            }
+        }
     }
-
     # Verify if a user must be either [created] or just [correlated]
     if (($null -ne $correlatedEmployeeAccount) -and ($null -ne $correlatedUserAccount)) {
         $action = 'CorrelateAccount'
@@ -496,37 +479,41 @@ try {
 
                 $accountWithoutUser = ($account | Select-Object -Property * -ExcludeProperty gebruiker)
                 $employee = New-EduarteEmployee -Account $accountWithoutUser
-                
+
                 if ($null -eq $employee) {
                     throw "Executing New-EduarteEmployee function failed. Check process logging"
                 }
-
-                $outputContext.AccountReference = $employee.gebruikersnaam
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Action  = $action
-                    Message = "Create Eduarte-employee (medewerker) account was successful. AccountReference is: [$($outputContext.AccountReference)"
-                    IsError = $false
-                })
-
                 $null = New-EduarteUser -Employee $employee -User $account.gebruiker
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Action  = $action
-                    Message = "Creating Eduarte-user (gebruiker) account was successful. AccountReference is: [$($outputContext.AccountReference)]"
-                    IsError = $false
-                })
 
+                $outputContext.AccountReference = [pscustomobject]@{
+                    id   = $employee.id
+                    user = $account.gebruiker.gebruikernaam
+                }
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = $action
+                        Message = "Create Eduarte-employee (medewerker) account was successful. AccountReference is: [$($outputContext.AccountReference.Id)]"
+                        IsError = $false
+                    })
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = $action
+                        Message = "Creating Eduarte-user (gebruiker) account was successful. AccountReference is: [$($outputContext.AccountReference.User)]"
+                        IsError = $false
+                    })
                 $outputContext.Data = $employee
                 break
             }
             'CreateUser' {
                 $null = New-EduarteUser -Employee $correlatedEmployeeAccount -User $account.gebruiker
-
-                $outputContext.AccountReference = $correlatedEmployeeAccount.gebruikersnaam
+                $outputContext.AccountReference = [pscustomobject]@{
+                    id   = $correlatedEmployeeAccount.id
+                    user = $account.gebruiker.gebruikernaam
+                }
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Action  = 'CreateAccount'
-                    Message = "Creating Eduarte-user (gebruiker) account was successful. AccountReference is: [$($outputContext.AccountReference)]"
-                    IsError = $false
-                })
+                        Action  = 'CreateAccount'
+                        Message = "Creating Eduarte-user (gebruiker) account was successful. AccountReference is: [$($outputContext.AccountReference.User)]"
+                        IsError = $false
+                    })
 
                 $outputContext.Data = $correlatedEmployeeAccount
                 break
@@ -534,28 +521,29 @@ try {
 
             'CorrelateAccount' {
                 Write-Information 'Correlating Eduarte-employee (medewerker) account'
-        
                 $outputContext.Data = $correlatedEmployeeAccount
-                $outputContext.AccountReference = $correlatedEmployeeAccount.gebruikersnaam
+                $outputContext.AccountReference = [pscustomobject]@{
+                    id   = $correlatedEmployeeAccount.id
+                    user = $account.gebruiker.gebruikernaam
+                }
                 $outputContext.AccountCorrelated = $true
-
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Action  = $action
-                    Message = "Correlated account: [$($correlatedEmployeeAccount.gebruikersnaam)] on field: [$($correlationField)] with value: [$($correlationValue)]"
-                    IsError = $false
-                })
+                        Action  = $action
+                        Message = "Correlated account: [$($account.gebruiker.gebruikernaam)] on field: [$($correlationField)] with value: [$($correlationValue)]"
+                        IsError = $false
+                    })
 
                 break
             }
         }
     }
-$outputContext.success = $true
+    $outputContext.success = $true
 } catch {
     $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-Eduarte-MedewerkerError -ErrorObject $ex
+        $errorObj = Resolve-Eduarte-EmployeeError -ErrorObject $ex
         $auditMessage = "Could not create or correlate Eduarte-employee (medewerker) account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
