@@ -16,7 +16,7 @@
 
 ## Table of contents
 
-- [HelloID-Conn-Prov-Target-Eduarte-Medewerker](#HelloID-Conn-Prov-Target-Eduarte-Medewerker)
+- [HelloID-Conn-Prov-Target-Eduarte-Medewerker](#helloid-conn-prov-target-eduarte-medewerker)
   - [Table of contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Getting started](#getting-started)
@@ -26,23 +26,27 @@
     - [Connection settings](#connection-settings)
     - [Prerequisites](#prerequisites)
     - [Remarks](#remarks)
+      - [Employee and User account](#employee-and-user-account)
+      - [Active status](#active-status)
+      - [API specifications](#api-specifications)
+      - [FieldMapping](#fieldmapping)
   - [Setup the connector](#setup-the-connector)
   - [Getting help](#getting-help)
   - [HelloID docs](#helloid-docs)
 
 ## Introduction
 
-_HelloID-Conn-Prov-Target-Eduarte-Employee_ is a _target_ connector. Eduarte-Employee provides a set of SOAP API's that allow you to programmatically interact with its data. This connector only correlates HelloID persons with an employee and user account in eduarte.
+_HelloID-Conn-Prov-Target-Eduarte-Employee_ is a _target_ connector. Eduarte-Employee provides a set of SOAP API's that allow you to programmatically interact with its data. This connector create and correlates HelloID persons with an employee and user account in eduarte.
 
 The following lifecycle events are available:
 
-| Event  | Description | Notes |
-|---	 |---	|---	|
+| Event     | Description | Notes |
+|---	    |---	        |---	|
 | create.ps1 | Create the employee and user account | - |
-| update.ps1 | Update the employee account | - |
-| enable.ps1 | Enable the employee account | - |
-| disable.ps1 | Disable the employee account | - |
-| delete.ps1 | n/a | - |
+| update.ps1 | Update the employee account and create user account | - |
+| enable.ps1 | Enable the User account | - |
+| disable.ps1 | Disable the User account | - |
+| delete.ps1 | n/a | - | - |
 
 ## Getting started
 
@@ -62,7 +66,9 @@ To properly setup the correlation:
     | ------------------------- | --------------------------------- |
     | Enable correlation        | `True`                            |
     | Person correlation field  | `PersonContext.Person.ExternalId` |
-    | Account correlation field | ``                                |
+    | Account correlation field | `afkorting`                       |
+
+> **Note!** *The connectors correlates the **User** account with the property `gebruiker.gebruikernaam`*
 
 > [!TIP]
 > _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
@@ -75,81 +81,38 @@ The field mapping can be imported by using the _fieldMapping.json_ file.
 
 The following settings are required to connect to the API.
 
-| Setting      | Description                        | Mandatory   |
-| ------------ | -----------                        | ----------- |
-| ApiKey       | The ApiKey to connect to the API   | Yes         |
-| BaseUrl      | The URL to the API                 | Yes         |
+| Setting | Description                      | Mandatory |
+| ------- | -------------------------------- | --------- |
+| ApiKey  | The ApiKey to connect to the API | Yes       |
+| BaseUrl | The URL to the API               | Yes       |
 
 ### Prerequisites
+- Create a custom property for the field mapping for correlation. A Person property named `personAfkortingscode`.
 
 ### Remarks
-- There is currently no comparison implemented. If this is required for the implementation, it needs to be added. This comparison is listed as a ToDo comment in the Update.ps1
-- the connector facilitates the creation of an employee account as well as an user account. The user account can only be created after the employee account is created. This is because the id of the employee account is necessary in the user account
-- the connector utilizes a sort function in the create and update script. This is because the api expects the properties of the xml object to be in alphabetical order.
-- The current implementation uses `custom.person.afkortingscode` in the field mapping for `afkorting`. Populate this with the value needed for your implementation.
-- The field mapping uses `gebruiker.` and `contactgegevens.` to create nested objects.
-- By default, the connector correlates with the username and uses it as the account reference. It also assigns the employee a username during the correlation process. However, this could be different in your Eduarte environment. There is an alternative option to correlate using the abbreviation and use that as the account reference. Please verify this during implementation.
+
+#### Employee and User account
+- The connector facilitates the creation of both an employee account and a user account. The user account is dependent on the employee account and can only be created once the employee account exists.
+- The user account is created during the initial creation process and will be re-created during updates if the account has been removed.
+- The `gebruikersnaam` property in the employee object will appear once the user account is created.
+- The connector checks if the existing `gebruikersnaam` differs from the desired username in HelloID. If a discrepancy is found, an error is thrown, which must be resolved manually.
+
+#### Active status
+- The employee object will be created in an active state and will not be set to inactive during its lifecycle.
+- The BeginDate determines the Active property, although the Active property is mandatory in the API.
+- The enable and disable scripts only enable or disable the user account, leaving the employee account untouched.
+
+#### API specifications
+- The connector uses a sort function in the create and update scripts because the API expects the properties of the XML object to be in alphabetical order, except for `contactgegevens`.
+- The functions `Name` and `Code` should be existing functions within Eduarte.
+- Username (`Gebruikersnaam`) changes are supported by the API through a specific web request, but this functionality is not implemented in the connector.
+- The `afkorting` property is unique during account creation. However, it can be updated during an account update, which can result in duplicate accounts.
+  - When this occurs, the correlation action fails because the function `getMedewerkerMetAfkorting` no longer returns the account, leading the connector to assume that the account does not exist and attempting to create a new one.
 
 
-  In the code example below you can find a function that retrieves the employee based on the abbreviation
-
-```
-function Get-EduarteMedewerkerWithAbbreviation {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)]
-        [string]$Abbreviation
-    )
-    process {
-        try {
-            Write-Information "Getting Eduarte employee for: [$($Abbreviation)]"
-
-            [xml]$soapEnvelope = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
-    <soapenv:Header/>
-    <soapenv:Body>
-    <api:getMedewerkerMetAfkorting>
-    </api:getMedewerkerMetAfkorting>
-    </soapenv:Body>
-</soapenv:Envelope>'
-
-            $element = $soapEnvelope.envelope.body.ChildNodes | Where-Object { $_.LocalName -eq 'getMedewerkerMetAfkorting' }
-            $element | Add-XmlElement -ElementName 'apiSleutel' -ElementValue "$($actionContext.configuration.ApiKey)"
-            $element | Add-XmlElement -ElementName 'afkorting' -ElementValue "$($Abbreviation)"
-
-            $splatGetEmployee = @{
-                Method          = 'POST'
-                Uri             = "$($actionContext.configuration.BaseUrl.TrimEnd('/'))/services/api/algemeen/medewerkers"
-                ContentType     = "text/xml"
-                Body            = $soapEnvelope.InnerXml
-                UseBasicParsing = $true
-            }
-
-            $response = Invoke-WebRequest @splatGetEmployee
-
-            # Check if the response is valid
-            if ($response.StatusCode -ne "200") {
-                Write-Error "Invalid response: $($response.StatusCode)"
-                return $null
-            }
-
-            $rawResponse = ([xml]$response.content).Envelope.body
-            $employee = $rawResponse.getMedewerkerMetAfkortingResponse.medewerker
-
-            if ([String]::IsNullOrEmpty($employee)) {
-                return $null
-            }
-            else {
-                Write-Information "Correlated Eduarte employee for: [$($Abbreviation)]"
-
-                return $employee
-            }
-        }
-        catch {
-            throw $_
-        }
-    }
-}
-```
+#### FieldMapping
+- The field mapping includes `gebruiker`. and `contactgegevens`. objects to create nested structures. These mappings are hardcoded, sorted, and compared within the connector. Therefore, any changes to these mappings require a code adjustment.
+- The current field mapping implements a custom field, `Person.Custom.personAfkortingscode`. This may be necessary based on the customer's requirements, but it depends on their specific implementation. In some cases, the ExternalId might also be a suitable alternative.
 
 ## Setup the connector
 

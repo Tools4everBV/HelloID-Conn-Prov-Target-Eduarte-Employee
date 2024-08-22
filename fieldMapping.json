@@ -25,28 +25,11 @@
       "MappingActions": [
         {
           "MapForActions": [
-            "Create"
-          ],
-          "MappingMode": "Fixed",
-          "Value": "\"false\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        },
-        {
-          "MapForActions": [
-            "Enable"
+            "Create",
+            "Update"
           ],
           "MappingMode": "Fixed",
           "Value": "\"true\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        },
-        {
-          "MapForActions": [
-            "Disable"
-          ],
-          "MappingMode": "Fixed",
-          "Value": "\"false\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -96,8 +79,8 @@
             "Create",
             "Update"
           ],
-          "MappingMode": "Field",
-          "Value": "\"Person.Details.Gender\"",
+          "MappingMode": "Complex",
+          "Value": "\"function getValue() {\\n\\n    if (Person.Details.Gender == 'Vrouw') {\\n        return \\\"vrouw\\\"\\n    }\\n    if (Person.Details.Gender == 'Man') {\\n        return \\\"man\\\"\\n    }\\n}\\ngetValue();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -130,8 +113,8 @@
             "Create",
             "Update"
           ],
-          "MappingMode": "Field",
-          "Value": "\"Person.PrimaryContract.Title.Code\"",
+          "MappingMode": "Fixed",
+          "Value": "\"Flex\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -147,8 +130,8 @@
             "Create",
             "Update"
           ],
-          "MappingMode": "Field",
-          "Value": "\"Person.PrimaryContract.Title.Name\"",
+          "MappingMode": "Fixed",
+          "Value": "\"Medewerker Flexpool\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -166,32 +149,6 @@
           ],
           "MappingMode": "Field",
           "Value": "\"Person.Name.Initials\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "einddatum",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Disable"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"function formatDateToYYYYMMDD(date) {\\r\\n    // Ensure input is a Date object\\r\\n    if (!(date instanceof Date)) {\\r\\n        return \\\"Invalid Date\\\";\\r\\n    }\\r\\n\\r\\n    // Extract year, month, and day\\r\\n    const year = date.getFullYear();\\r\\n    const month = String(date.getMonth() + 1).padStart(2, '0'); // Month is zero-indexed\\r\\n    const day = String(date.getDate()).padStart(2, '0');\\r\\n\\r\\n    // Concatenate and return formatted date\\r\\n    return `${year}-${month}-${day}`;\\r\\n}\\r\\n\\r\\nlet endDate = new Date();\\r\\n\\r\\nformatDateToYYYYMMDD(endDate);\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        },
-        {
-          "MapForActions": [
-            "Enable"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"function formatDateToYYYYMMDD(date) {\\r\\n    // Ensure input is a Date object\\r\\n    if (!(date instanceof Date)) {\\r\\n        return \\\"Invalid Date\\\";\\r\\n    }\\r\\n\\r\\n    // Extract year, month, and day\\r\\n    const year = '2199';\\r\\n    const month = String(date.getMonth() + 1).padStart(2, '0'); // Month is zero-indexed\\r\\n    const day = String(date.getDate()).padStart(2, '0');\\r\\n\\r\\n    // Concatenate and return formatted date\\r\\n    return `${year}-${month}-${day}`;\\r\\n}\\r\\n\\r\\nlet endDate = new Date();\\r\\n\\r\\nformatDateToYYYYMMDD(endDate);\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -242,7 +199,7 @@
             "Update"
           ],
           "MappingMode": "Fixed",
-          "Value": "\"Medewerker email\"",
+          "Value": "\"E-mail\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -276,7 +233,7 @@
             "Update"
           ],
           "MappingMode": "None",
-          "Value": "\"\"",
+          "Value": "null",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -344,7 +301,7 @@
             "Update"
           ],
           "MappingMode": "None",
-          "Value": "\"\"",
+          "Value": "null",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -369,12 +326,13 @@
     },
     {
       "Name": "gebruiker.wachtwoord",
-      "Description": "",
+      "Description": "Only used in the Create and in the Update action when the user account needs to be created.",
       "Type": "Text",
       "MappingActions": [
         {
           "MapForActions": [
-            "Create"
+            "Create",
+            "Update"
           ],
           "MappingMode": "Complex",
           "Value": "\"// generatePasswordOption1.js [https://github.com/Tools4everBV/HelloID-Lib-Prov-HelperFunctions/blob/master/Javascript/Target/Password/Scripts/generatePasswordOption1.js]\\r\\n//\\r\\n// Helper function to shuffle an array\\r\\nfunction randomizeCharSequence(passwordObject) {\\r\\n    for (let j, x, i = passwordObject.length; i; j = Math.floor(Math.random() * i), x = passwordObject[--i], passwordObject[i] = passwordObject[j], passwordObject[j] = x);\\r\\n    return passwordObject;\\r\\n}\\r\\n\\r\\nfunction generatePassword() {\\r\\n    // Initialize these variables for the algorithm to meet your password complexity rules\\r\\n    const passwordLength = 8;\\r\\n    const minUpper = 1;\\r\\n    const maxUpper = 3;\\r\\n    const minNumeric = 0;\\r\\n    const maxNumeric = 2;\\r\\n    const minSpecial = 1;\\r\\n    const maxSpecial = 1;\\r\\n\\r\\n    // Character sets\\r\\n    const upperChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';\\r\\n    const lowerChars = 'abcdefghijklmnopqrstuvwxyz';\\r\\n    const numberChars = '0123456789';\\r\\n    const specialChars = '!#$@*?';\\r\\n\\r\\n    // Do not change any code below this line !!!\\r\\n\\r\\n    // Helper function to get a random character from a set\\r\\n    const getRandomValue = (values) => values.charAt(Math.floor(Math.random() * values.length));\\r\\n\\r\\n    // Generate individual character groups\\r\\n    const numberUpper = Math.floor(Math.random() * (maxUpper - minUpper + 1)) + minUpper;\\r\\n    const numberNumeric = Math.floor(Math.random() * (maxNumeric - minNumeric + 1)) + minNumeric;\\r\\n    const numberSpecial = Math.floor(Math.random() * (maxSpecial - minSpecial + 1)) + minSpecial;\\r\\n    const numberLower = passwordLength - (numberUpper + numberNumeric + numberSpecial);\\r\\n\\r\\n    const numericGroup = Array.from({ length: numberNumeric }, () => getRandomValue(numberChars));\\r\\n    const upperGroup = Array.from({ length: numberUpper }, () => getRandomValue(upperChars));\\r\\n    const specialGroup = Array.from({ length: numberSpecial }, () => getRandomValue(specialChars));\\r\\n    const lowerGroup = Array.from({ length: numberLower }, () => getRandomValue(lowerChars));\\r\\n\\r\\n    // Combine all groups and shuffle the order\\r\\n    const password = randomizeCharSequence([...numericGroup, ...upperGroup, ...specialGroup, ...lowerGroup]);\\r\\n\\r\\n    return password.join('');\\r\\n}\\r\\n\\r\\ngeneratePassword();\"",
@@ -390,17 +348,7 @@
       "MappingActions": [
         {
           "MapForActions": [
-            "Create",
-            "Disable"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"function formatDateToYYYYMMDD(date) {\\r\\n    // Ensure input is a Date object\\r\\n    if (!(date instanceof Date)) {\\r\\n        return \\\"Invalid Date\\\";\\r\\n    }\\r\\n\\r\\n    // Extract year, month, and day\\r\\n    const year = date.getFullYear();\\r\\n    const month = String(date.getMonth() + 1).padStart(2, '0'); // Month is zero-indexed\\r\\n    const day = String(date.getDate()).padStart(2, '0');\\r\\n\\r\\n    // Concatenate and return formatted date\\r\\n    return `${year}-${month}-${day}`;\\r\\n}\\r\\n\\r\\nlet startDate = new Date();\\r\\n\\r\\nformatDateToYYYYMMDD(startDate);\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        },
-        {
-          "MapForActions": [
-            "Enable"
+            "Create"
           ],
           "MappingMode": "Complex",
           "Value": "\"function formatDateToYYYYMMDD(date) {\\r\\n    // Ensure input is a Date object\\r\\n    if (!(date instanceof Date)) {\\r\\n        return \\\"Invalid Date\\\";\\r\\n    }\\r\\n\\r\\n    // Extract year, month, and day\\r\\n    const year = date.getFullYear();\\r\\n    const month = String(date.getMonth() + 1).padStart(2, '0'); // Month is zero-indexed\\r\\n    const day = String(date.getDate()).padStart(2, '0');\\r\\n\\r\\n    // Concatenate and return formatted date\\r\\n    return `${year}-${month}-${day}`;\\r\\n}\\r\\n\\r\\nlet startDate = new Date();\\r\\n\\r\\nformatDateToYYYYMMDD(startDate);\"",
@@ -428,7 +376,7 @@
     },
     {
       "Name": "contactgegevens.code",
-      "Description": "The PowerShell scripts use all the fields starting with `contactgegevens.` in a nested object.",
+      "Description": "The PowerShell scripts use all the fields starting with `contactGegevens.` in a nested object.\nFixed values for email: \"E = Email\" and \"P = Prive\"\n",
       "Type": "Text",
       "MappingActions": [
         {
@@ -437,7 +385,7 @@
             "Update"
           ],
           "MappingMode": "Fixed",
-          "Value": "\"School\"",
+          "Value": "\"E\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
