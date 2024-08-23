@@ -229,8 +229,7 @@
       "MappingActions": [
         {
           "MapForActions": [
-            "Create",
-            "Update"
+            "Create"
           ],
           "MappingMode": "None",
           "Value": "null",

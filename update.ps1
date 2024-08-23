@@ -363,7 +363,7 @@ try {
     }
 
     #extra mapping to ensure the properties are in alphabetical order
-    $actionContext.Data.id = $actionContext.References.Account.Id
+    $actionContext.Data | Add-Member @{id = $actionContext.References.Account.Id } -Force
     $account = Sort-EduartePSCustomObjectProperties -InputObject $actionContext.Data
 
     Write-Information "Verifying if a Eduarte-employee (medewerker) account for [$($personContext.Person.DisplayName)] exists"
@@ -477,10 +477,10 @@ try {
                 Write-Information "No changes to Eduarte-employee (medewerker) account with accountReference: [$($actionContext.References.Account.Id)]"
 
                 $outputContext.Success = $true
-                # $outputContext.AuditLogs.Add([PSCustomObject]@{
-                #         Message = 'No changes will be made to the account during enforcement'
-                #         IsError = $false
-                #     })
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Message = 'No changes will be made to the account during enforcement'
+                        IsError = $false
+                    })
                 break
             }
 
