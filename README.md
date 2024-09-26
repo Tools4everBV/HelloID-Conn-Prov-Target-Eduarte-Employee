@@ -5,7 +5,7 @@
 > This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.
 
 <p align="center">
-  <img src="https://www.eduarte.nl/wp-content/uploads/2018/06/eduarte-logo.png">
+  <img src="https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-Eduarte-Employee/blob/main/Logo.png?raw=true">
   </p>
 
 ## Table of contents
@@ -20,6 +20,7 @@
     - [Connection settings](#connection-settings)
     - [Prerequisites](#prerequisites)
     - [Remarks](#remarks)
+      - [Concurrent actions](#concurrent-actions)
       - [Employee and User account](#employee-and-user-account)
       - [Active status](#active-status)
       - [API specifications](#api-specifications)
@@ -34,13 +35,18 @@ _HelloID-Conn-Prov-Target-Eduarte-Employee_ is a _target_ connector. Eduarte-Emp
 
 The following lifecycle events are available:
 
-| Event     | Description | Notes |
-|---	    |---	        |---	|
-| create.ps1 | Create the employee and user account | - |
-| update.ps1 | Update the employee account and create user account | - |
-| enable.ps1 | Enable the User account | - |
-| disable.ps1 | Disable the User account | - |
-| delete.ps1 | n/a | - | - |
+| Event                                             | Description                                         |
+| ------------------------------------------------- | --------------------------------------------------- |
+| create.ps1                                        | Create the employee and user account                |
+| update.ps1                                        | Update the employee account and create user account |
+| enable.ps1                                        | Enable the User account                             |
+| disable.ps1                                       | Disable the User account                            |
+| delete.ps1                                        | Disable the User account                            |
+| permissions/rolls/permission.ps1 grant.change.ps1 | List rolls as permissions                           |
+| revoke.change.ps1                                 | Grant rolls to an account                           |
+| permissions.change.ps1                            | Revoke rolls from an account                        |
+| configuration.json                                | Default _configuration.json_                        |
+| fieldMapping.json                                 | Default _fieldMapping.json_                         |
 
 ## Getting started
 
@@ -62,7 +68,8 @@ To properly setup the correlation:
     | Person correlation field  | `PersonContext.Person.ExternalId` |
     | Account correlation field | `afkorting`                       |
 
-> **Note!** *The connectors correlates the **User** account with the property `gebruiker.gebruikernaam`*
+> [!NOTE]
+> *The connectors correlates the **User** account with the property `gebruiker.gebruikernaam`*
 
 > [!TIP]
 > _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
@@ -84,6 +91,10 @@ The following settings are required to connect to the API.
 - Create a custom property for the field mapping for correlation. A Person property named `personAfkortingscode`.
 
 ### Remarks
+
+#### Concurrent actions
+> [!IMPORTANT]
+> Granting and revoking rolls is done by editing rolls after receiving the rolls from an account. For this reason, the concurrent actions need to be set to `1`.
 
 #### Employee and User account
 - The connector facilitates the creation of both an employee account and a user account. The user account is dependent on the employee account and can only be created once the employee account exists.
