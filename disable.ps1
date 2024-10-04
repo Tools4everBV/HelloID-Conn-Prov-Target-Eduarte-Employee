@@ -199,6 +199,8 @@ try {
         $dryRunMessage = "No Eduarte-user (gebruiker) account found for existing Eduarte-employee (medewerker) account: [$($actionContext.References.Account.User)], possibly indicating that it could be deleted, or the account is not correlated"
     }
 
+    Write-Information "determined action: [$action]"
+
     # Add a message and the result of each of the validations showing what will happen during enforcement
     if ($actionContext.DryRun -eq $true) {
         Write-Information "[DryRun] $dryRunMessage"
