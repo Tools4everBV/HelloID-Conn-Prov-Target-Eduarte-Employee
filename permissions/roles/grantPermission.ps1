@@ -1,5 +1,5 @@
 #################################################
-# HelloID-Conn-Prov-Target-Eduarte-Medewerker-RevokePermission-Rolls
+# HelloID-Conn-Prov-Target-Eduarte-Medewerker-GrantPermission-Roles
 # PowerShell V2
 #################################################
 
@@ -15,7 +15,7 @@ function Get-EduarteGebruikerRollen {
     )
     process {
         try {
-            Write-Information "Getting Eduarte rolls for: [$($userName)]"
+            Write-Information "Getting Eduarte roles for: [$($userName)]"
 
             [xml]$soapEnvelope = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
                 <soapenv:Header/>
@@ -46,15 +46,15 @@ function Get-EduarteGebruikerRollen {
             }
 
             $rawResponse = ([xml]$response.content).Envelope.body
-            $userRolls = $rawResponse.getGebruikerRollenResponse.rol.naam
+            $userRoles = $rawResponse.getGebruikerRollenResponse.rol.naam
 
-            if ([String]::IsNullOrEmpty($userRolls)) {
+            if ([String]::IsNullOrEmpty($userRoles)) {
                 return $null
             }
             else {
-                Write-Information "Successfully queried [$($userRolls.count)] Eduarte rolls for: [$($userName)]"
+                Write-Information "Successfully queried [$($userRoles.count)] Eduarte roles for: [$($userName)]"
 
-                return $userRolls
+                return $userRoles
             }
         }
         catch {
@@ -69,11 +69,12 @@ function Add-EduarteGebruikerRollen {
         [Parameter(Mandatory)]
         [string]$userName,
 
-        [array]$rolls
+        [Parameter(Mandatory)]
+        $roles
     )
     process {
         try {
-            Write-Information "Updating Eduarte rolls for: [$($userName)]"
+            Write-Information "Updating Eduarte roles for: [$($userName)]"
 
             [xml]$soapEnvelope = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.algemeen.webservices.eduarte.topicus.nl/">
                 <soapenv:Header/>
@@ -86,10 +87,8 @@ function Add-EduarteGebruikerRollen {
             $element = $soapEnvelope.envelope.body.ChildNodes | Where-Object { $_.LocalName -eq 'wijzigGebruikerRollen' }
             $element | Add-XmlElement -ElementName 'apiSleutel' -ElementValue "$($actionContext.Configuration.ApiKey)"
             $element | Add-XmlElement -ElementName 'gebruikernaam' -ElementValue "$($userName)"
-            if ($rolls -ne $null) {
-                foreach ($rol in $rolls) {
-                    $element | Add-XmlElement -ElementName "rollen" -ElementValue "$($rol)" -AsChildElement
-                }
+            foreach ($rol in $roles) {
+                $element | Add-XmlElement -ElementName "rollen" -ElementValue "$($rol)" -AsChildElement
             }
 
             $splatAddGebruikerRollen = @{
@@ -193,34 +192,34 @@ try {
         throw 'The account reference could not be found'
     }
 
-    [array]$currentUserRolls = Get-EduarteGebruikerRollen -userName $actionContext.References.Account.user
+    [array]$currentUserRoles = Get-EduarteGebruikerRollen -userName $actionContext.References.Account.user
 
     #region Calulate action
-    if ($currentUserRolls -contains $actionContext.References.Permission.Name) {
-        $action = "RevokePermission"
+    if ($currentUserRoles -contains $actionContext.References.Permission.Name) {
+        $action = 'NoChanges'
     }
     else {
-        $action = 'NoChanges'   
+        $action = "GrantPermission"   
     }
     Write-Information "Calculated action [$action]"
     #endregion Calulate action
    
     #region Process
     switch ($action) {
-        "RevokePermission" { 
-            $newUserRolls = $currentUserRolls
-            $newUserRolls = $newUserRolls | Where-Object { $_ -ne $actionContext.References.Permission.Name }
+        "GrantPermission" { 
+            $allUserRoles = $currentUserRoles
+            $allUserRoles += $actionContext.References.Permission.Name
    
             if (-Not($actionContext.DryRun -eq $true)) {
-                Add-EduarteGebruikerRollen -userName $actionContext.References.Account.user -rolls $newUserRolls
+                Add-EduarteGebruikerRollen -userName $actionContext.References.Account.user -roles $allUserRoles
    
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "Permission with name [$($actionContext.References.Permission.Name)] revoked from account with userName [$($actionContext.References.Account.user)]."
+                        Message = "Permission with name [$($actionContext.References.Permission.Name)] granted to account with userName [$($actionContext.References.Account.user)]."
                         IsError = $false
                     })
             }
             else {
-                Write-Warning "DryRun: Would revoke permission with name [$($actionContext.References.Permission.Name)] from account with userName [$($actionContext.References.Account.user)]."
+                Write-Warning "DryRun: Would grant permission with name [$($actionContext.References.Permission.Name)] to account with userName [$($actionContext.References.Account.user)]."
             }
                
             break
@@ -228,7 +227,7 @@ try {
    
         'NoChanges' {
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "Permission with name [$($actionContext.References.Permission.Name)] already revoked from account with userName [$($actionContext.References.Account.user)]."
+                    Message = "Permission with name [$($actionContext.References.Permission.Name)] already granted to account with userName [$($actionContext.References.Account.user)]."
                     IsError = $false
                 })
    

@@ -35,18 +35,18 @@ _HelloID-Conn-Prov-Target-Eduarte-Employee_ is a _target_ connector. Eduarte-Emp
 
 The following lifecycle events are available:
 
-| Event                                             | Description                                         |
-| ------------------------------------------------- | --------------------------------------------------- |
-| create.ps1                                        | Create the employee and user account                |
-| update.ps1                                        | Update the employee account and create user account |
-| enable.ps1                                        | Enable the User account                             |
-| disable.ps1                                       | Disable the User account                            |
-| delete.ps1                                        | Disable the User account                            |
-| permissions/rolls/permission.ps1 grant.change.ps1 | List rolls as permissions                           |
-| revoke.change.ps1                                 | Grant rolls to an account                           |
-| permissions.change.ps1                            | Revoke rolls from an account                        |
-| configuration.json                                | Default _configuration.json_                        |
-| fieldMapping.json                                 | Default _fieldMapping.json_                         |
+| Event                                  | Description                                         |
+| -------------------------------------- | --------------------------------------------------- |
+| create.ps1                             | Create the employee and user account                |
+| update.ps1                             | Update the employee account and create user account |
+| enable.ps1                             | Enable the User account                             |
+| disable.ps1                            | Disable the User account                            |
+| delete.ps1                             | Disable the User account                            |
+| permissions/roles/permissions.ps1      | List roles as permissions                           |
+| permissions/roles/revokePermission.ps1 | Grant roles to an account                           |
+| permissions/roles/grantPermission.ps1  | Revoke roles from an account                        |
+| configuration.json                     | Default _configuration.json_                        |
+| fieldMapping.json                      | Default _fieldMapping.json_                         |
 
 ## Getting started
 
@@ -94,7 +94,7 @@ The following settings are required to connect to the API.
 
 #### Concurrent actions
 > [!IMPORTANT]
-> Granting and revoking rolls is done by editing rolls after receiving the rolls from an account. For this reason, the concurrent actions need to be set to `1`.
+> Granting and revoking roles is done by editing roles after receiving the roles from an account. For this reason, the concurrent actions need to be set to `1`.
 
 #### Employee and User account
 - The connector facilitates the creation of both an employee account and a user account. The user account is dependent on the employee account and can only be created once the employee account exists.
