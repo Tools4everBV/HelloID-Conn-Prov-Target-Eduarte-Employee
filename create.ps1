@@ -465,6 +465,8 @@ try {
     } else {
         $action = 'CreateAccount'
     }
+    
+    Write-Information "determined action: [$action]"
 
     # Add a message and the result of each of the validations showing what will happen during enforcement
     if ($actionContext.DryRun -eq $true) {
