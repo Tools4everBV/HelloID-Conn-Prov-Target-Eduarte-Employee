@@ -114,6 +114,7 @@ function Get-EduarteMedewerkerMetAfkorting {
     }
 }
 
+
 function New-EduarteEmployee {
     [CmdletBinding()]
     param (
@@ -450,23 +451,21 @@ try {
 
         if (-not [string]::IsNullOrEmpty($account.gebruiker.gebruikernaam) ) {
             $correlatedUserAccount = $true
-            if ($null -eq $correlatedAccount.gebruikersnaam ) {
+            if ($null -eq $correlatedEmployeeAccount.gebruikersnaam ) {
                 $correlatedUserAccount = $false
-            } elseif ($account.gebruiker.gebruikernaam -ne $correlatedAccount.gebruikersnaam ) {
-                throw "HelloID provided username [$($account.gebruiker.gebruikernaam)] differs from the existing username [$($correlatedAccount.gebruikersnaam)] of the correlated account"
+            } elseif ($account.gebruiker.gebruikernaam -ne $correlatedEmployeeAccount.gebruikersnaam ) {
+                Write-Warning "HelloID provided username [$($account.gebruiker.gebruikernaam)] differs from the existing username [$($correlatedEmployeeAccount.gebruikersnaam)] of the correlated account"
             }
         }
     }
     # Verify if a user must be either [created] or just [correlated]
-    if (($null -ne $correlatedEmployeeAccount) -and ($null -ne $correlatedUserAccount)) {
+    if (($null -ne $correlatedEmployeeAccount) -and ($correlatedUserAccount -eq $true)) {
         $action = 'CorrelateAccount'
-    } elseif ($null -ne $correlatedEmployeeAccount -and ($null -eq $correlatedUserAccount)) {
+    } elseif ($null -ne $correlatedEmployeeAccount -and ($correlatedUserAccount -eq $false)) {
         $action = 'CreateUser'
     } else {
         $action = 'CreateAccount'
     }
-    
-    Write-Information "determined action: [$action]"
 
     # Add a message and the result of each of the validations showing what will happen during enforcement
     if ($actionContext.DryRun -eq $true) {
@@ -505,6 +504,7 @@ try {
                 $outputContext.Data = $employee
                 break
             }
+
             'CreateUser' {
                 $null = New-EduarteUser -Employee $correlatedEmployeeAccount -User $account.gebruiker
                 $outputContext.AccountReference = [pscustomobject]@{
