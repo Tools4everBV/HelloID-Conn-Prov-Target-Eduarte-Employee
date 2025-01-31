@@ -363,7 +363,6 @@ try {
     }
 
     #extra mapping to ensure the properties are in alphabetical order
-    $outputcontext.Data | Add-Member @{id = $actionContext.References.Account.Id } -Force
     $actionContext.Data | Add-Member @{id = $actionContext.References.Account.Id } -Force
     $account = Sort-EduartePSCustomObjectProperties -InputObject $actionContext.Data
 
@@ -374,7 +373,7 @@ try {
     # Format Correlated account to $outputContext.PreviousPerson
     $correlatedAccount = [pscustomobject]@{}
     foreach ($node in $correlatedAccountXML.ChildNodes ) {
-        if ($node.name -notin @('contactgegevens', 'functie', 'defaultOrganisatieEenheid')) {
+        if ($node.name -notin @('contactgegevens', 'functie')) {
             $correlatedAccount | Add-Member @{"$($node.Name)" = $node.InnerText } -Force
         }
         if ($node.name -eq 'contactgegevens') {
@@ -396,13 +395,6 @@ try {
                 }
             }
         }
-        if ($node.name -eq 'defaultOrganisatieEenheid') {
-            $correlatedAccount | Add-Member @{
-                defaultOrganisatieEenheid = [PSCustomObject]@{
-                    naam = $node.naam
-                }
-            }
-        }
     }
 
     if ($actionContext.Data.gebruiker) {
@@ -414,9 +406,10 @@ try {
     $outputContext.PreviousData = $correlatedAccount
 
     if ($null -ne $correlatedAccount) {
+        # TODO Always compare the account against the current account in target system
         $splatCompareProperties = @{
             ReferenceObject  = @($outputContext.PreviousData.PSObject.Properties)
-            DifferenceObject = @(($actionContext.data | Select-Object * -ExcludeProperty contactgegevens, functie, gebruiker, id, defaultOrganisatieEenheid).PSObject.Properties)
+            DifferenceObject = @(($actionContext.data | Select-Object * -ExcludeProperty contactgegevens, functie , gebruiker, id).PSObject.Properties)
         }
         $propertiesChangedObject = Compare-Object @splatCompareProperties -PassThru | Where-Object { $_.SideIndicator -eq '=>' }
         $propertiesChanged = @{}
@@ -438,14 +431,6 @@ try {
             }
         }
 
-        # Additional compare for defaultOrganisatieEenheid
-        if (-not [string]::IsNullOrEmpty($actionContext.Data.defaultOrganisatieEenheid)) {
-            $defaultOrganisatieEenheid = $actionContext.Data.defaultOrganisatieEenheid
-            if ($defaultOrganisatieEenheid.naam -ne $correlatedAccount.defaultOrganisatieEenheid.naam) {
-                $propertiesChanged['defaultOrganisatieEenheid-naam'] = $actionContext.Data.defaultOrganisatieEenheid.naam
-            }
-        }
-
         if ($propertiesChanged.Count -gt 0) {
             $action = 'UpdateAccount'
             $dryRunMessage = "Account property(s) required to update: [$($propertiesChanged.Keys -join ', ')]"
@@ -457,8 +442,6 @@ try {
         $action = 'NotFound'
         $dryRunMessage = "Eduarte-employee (medewerker) account for: [$($personContext.Person.DisplayName)] not found. Possibly deleted."
     }
-
-    Write-Information "determined action: [$action]"
 
     # Add a message and the result of each of the validations showing what will happen during enforcement
     if ($actionContext.DryRun -eq $true) {
@@ -474,10 +457,11 @@ try {
                 $accountWithoutUser = ($account | Select-Object -Property * -ExcludeProperty gebruiker)
                 $null = Set-EduarteEmployee -Employee $correlatedAccount -Account $accountWithoutUser
 
+                # In case the 'account.gebruiker.gebruikersnaam' differs from 'correlatedAccount.gebruiker.gebruikersnaam' we should update the account rather then creating a new account.
                 if (-not [string]::IsNullOrEmpty($account.gebruiker.gebruikernaam) -and $correlatedAccount.gebruikersnaam -ne $account.gebruiker.gebruikernaam) {
-                    $null = New-EduarteUser -Employee $correlatedAccount -User $account.gebruiker
+                    $null = Set-EduarteEmployee -Employee $correlatedAccount -Account $account
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = "Creating Eduarte-user (gebruiker) account was successful. AccountReference is: [$($outputContext.AccountReference.User)]"
+                            Message = "Update account was successful. The 'gebruikersNaam' has been updated to: [$($account.gebruiker.gebruikernaam)]. AccountReference is: [$($outputContext.AccountReference.User)]"
                             IsError = $false
                         })
                 }
