@@ -510,6 +510,7 @@ try {
                         })
                 }
 
+                $outputContext.Data = $account
                 $outputContext.Success = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         Message = "Update account was successful, Account property(s) updated: [$($propertiesChanged.Keys -join ', ')]"
@@ -521,6 +522,7 @@ try {
             'NoChanges' {
                 Write-Information "No changes to Eduarte-employee (medewerker) account with accountReference: [$($actionContext.References.Account.Id)]"
 
+                $outputContext.Data = $account
                 $outputContext.Success = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         Message = 'No changes will be made to the account during enforcement'
