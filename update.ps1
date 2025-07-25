@@ -50,12 +50,14 @@ function Get-EduarteEmployeeById {
 
             if ([String]::IsNullOrEmpty($employee)) {
                 return $null
-            } else {
+            }
+            else {
                 Write-Information "Correlated Eduarte employee for: [$($Id)]"
 
                 return $employee
             }
-        } catch {
+        }
+        catch {
             throw $_
         }
     }
@@ -112,11 +114,13 @@ function Set-EduarteEmployee {
 
             if ([String]::IsNullOrEmpty($employee)) {
                 return $null
-            } else {
+            }
+            else {
                 Write-Information "Updated Eduarte employee for: [$($Account.afkorting)]"
                 return $employee
             }
-        } catch {
+        }
+        catch {
             throw $_
         }
     }
@@ -174,14 +178,17 @@ function New-EduarteUser {
                 }
 
                 return $User.gebruikernaam
-            } catch {
+            }
+            catch {
                 if ($_.ErrorDetails -match "heeft reeds een account") {
                     throw "Could not create Eduarte-user (gebruiker) account '$($User.gebruikernaam)'. Medewerker already has an (other) account: $($_.ErrorDetails)"
-                } else {
+                }
+                else {
                     throw $_.ErrorDetails
                 }
             }
-        } catch {
+        }
+        catch {
             throw $_
         }
     }
@@ -202,17 +209,20 @@ function Sort-EduartePSCustomObjectProperties {
 
         if ($value -is [PSCustomObject]) {
             $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue (Sort-EduartePSCustomObjectProperties -InputObject $value)
-        } elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+        }
+        elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
             $sortedArray = @()
             foreach ($item in $value) {
                 if ($item -is [PSCustomObject]) {
                     $sortedArray += Sort-EduartePSCustomObjectProperties -InputObject $item
-                } else {
+                }
+                else {
                     $sortedArray += $item
                 }
             }
             $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue $sortedArray
-        } else {
+        }
+        else {
             $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue $value
         }
     }
@@ -242,7 +252,8 @@ function Write-ToXmlDocument {
         foreach ($prop in $Properties.PSObject.Properties) {
             $ParameterList[$prop.Name] = $prop.Value
         }
-    } else {
+    }
+    else {
         $ParameterList = $Properties
     }
     foreach ($param in $ParameterList.GetEnumerator()) {
@@ -250,7 +261,8 @@ function Write-ToXmlDocument {
             $parent = $XmlDocument.CreateElement($param.Name)
             $ParameterList[$param.Name] | Write-ToXmlDocument -XmlDocument  $XmlDocument -XmlParentDocument $parent
             $null = $XmlParentDocument.AppendChild($parent)
-        } else {
+        }
+        else {
             $child = $XmlDocument.CreateElement($param.Name)
             $null = $child.InnerText = "$($param.Value)"
             $null = $XmlParentDocument.AppendChild($child)
@@ -282,7 +294,8 @@ function Add-XmlElement {
             $child = $XmlParentDocument.OwnerDocument.CreateElement($ElementName)
             $null = $child.InnerText = "$ElementValue"
             $null = $XmlParentDocument.AppendChild($child)
-        } catch {
+        }
+        catch {
             $PSCmdlet.ThrowTerminatingError($_)
         }
     }
@@ -344,7 +357,8 @@ function Resolve-Eduarte-EmployeeError {
         if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
             $httpErrorObj.FriendlyMessage = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException' -and (-not [string]::IsNullOrEmpty($ErrorObject.Exception.Response))) {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException' -and (-not [string]::IsNullOrEmpty($ErrorObject.Exception.Response))) {
             $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
             if ( $streamReaderResponse ) {
                 $httpErrorObj.ErrorDetails = $streamReaderResponse
@@ -373,7 +387,7 @@ try {
     # Format Correlated account to $outputContext.PreviousPerson
     $correlatedAccount = [pscustomobject]@{}
     foreach ($node in $correlatedAccountXML.ChildNodes ) {
-        if ($node.name -notin @('contactgegevens', 'functie')) {
+        if ($node.name -notin @('contactgegevens', 'functie', 'defaultOrganisatieEenheid')) {
             $correlatedAccount | Add-Member @{"$($node.Name)" = $node.InnerText } -Force
         }
         if ($node.name -eq 'contactgegevens') {
@@ -395,6 +409,13 @@ try {
                 }
             }
         }
+        if ($node.name -eq 'defaultOrganisatieEenheid') {
+            $correlatedAccount | Add-Member @{
+                defaultOrganisatieEenheid = [PSCustomObject]@{
+                    naam = $node.naam
+                }
+            }
+        }
     }
 
     if ($actionContext.Data.gebruiker) {
@@ -406,10 +427,22 @@ try {
     $outputContext.PreviousData = $correlatedAccount
 
     if ($null -ne $correlatedAccount) {
-        # TODO Always compare the account against the current account in target system
+        # defaultOrganisatieEenheid.naam must exisist for a compare
+        if (($actionContext.data.defaultOrganisatieEenheid.PSObject.Properties.Name -Contains 'naam') -and (-not($correlatedAccount.PSObject.Properties.Name -Contains 'defaultOrganisatieEenheid'))) {
+            $correlatedAccount | Add-Member @{
+                defaultOrganisatieEenheid = [PSCustomObject]@{
+                    naam = ''
+                }
+            }
+        }
+
+        if (($actionContext.data.PSObject.Properties.Name -Contains 'geboorteVoorvoegsel') -and (-not($correlatedAccount.PSObject.Properties.Name -Contains 'geboorteVoorvoegsel'))) {
+            $correlatedAccount | Add-Member -MemberType NoteProperty -Name 'geboorteVoorvoegsel' -Value '' -Force
+        }
+
         $splatCompareProperties = @{
-            ReferenceObject  = @($outputContext.PreviousData.PSObject.Properties)
-            DifferenceObject = @(($actionContext.data | Select-Object * -ExcludeProperty contactgegevens, functie , gebruiker, id).PSObject.Properties)
+            ReferenceObject  = @($correlatedAccount.PSObject.Properties)
+            DifferenceObject = @(($actionContext.data | Select-Object * -ExcludeProperty contactgegevens, functie, gebruiker, id, defaultOrganisatieEenheid).PSObject.Properties)
         }
         $propertiesChangedObject = Compare-Object @splatCompareProperties -PassThru | Where-Object { $_.SideIndicator -eq '=>' }
         $propertiesChanged = @{}
@@ -430,15 +463,25 @@ try {
                 $propertiesChanged['functie-naam'] = $actionContext.Data.functie.naam
             }
         }
+        
+        # Additional compare for defaultOrganisatieEenheid
+        if (-not [string]::IsNullOrEmpty($actionContext.Data.defaultOrganisatieEenheid)) {
+            $defaultOrganisatieEenheid = $actionContext.Data.defaultOrganisatieEenheid
+            if ($defaultOrganisatieEenheid.naam -ne $correlatedAccount.defaultOrganisatieEenheid.naam) {
+                $propertiesChanged['defaultOrganisatieEenheid-naam'] = $actionContext.Data.defaultOrganisatieEenheid.naam
+            }
+        }
 
         if ($propertiesChanged.Count -gt 0) {
             $action = 'UpdateAccount'
             $dryRunMessage = "Account property(s) required to update: [$($propertiesChanged.Keys -join ', ')]"
-        } else {
+        }
+        else {
             $action = 'NoChanges'
             $dryRunMessage = 'No changes will be made to the account during enforcement'
         }
-    } else {
+    }
+    else {
         $action = 'NotFound'
         $dryRunMessage = "Eduarte-employee (medewerker) account for: [$($personContext.Person.DisplayName)] not found. Possibly deleted."
     }
@@ -446,6 +489,7 @@ try {
     # Add a message and the result of each of the validations showing what will happen during enforcement
     if ($actionContext.DryRun -eq $true) {
         Write-Information "[DryRun] $dryRunMessage"
+        $outputContext.Success = $true
     }
 
     # Process
@@ -466,6 +510,7 @@ try {
                         })
                 }
 
+                $outputContext.Data = $account
                 $outputContext.Success = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         Message = "Update account was successful, Account property(s) updated: [$($propertiesChanged.Keys -join ', ')]"
@@ -477,6 +522,7 @@ try {
             'NoChanges' {
                 Write-Information "No changes to Eduarte-employee (medewerker) account with accountReference: [$($actionContext.References.Account.Id)]"
 
+                $outputContext.Data = $account
                 $outputContext.Success = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         Message = 'No changes will be made to the account during enforcement'
@@ -495,7 +541,8 @@ try {
             }
         }
     }
-} catch {
+}
+catch {
     $outputContext.Success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -503,7 +550,8 @@ try {
         $errorObj = Resolve-Eduarte-EmployeeError -ErrorObject $ex
         $auditMessage = "Could not update Eduarte-employee (medewerker) account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Could not update Eduarte-employee (medewerker) account. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }

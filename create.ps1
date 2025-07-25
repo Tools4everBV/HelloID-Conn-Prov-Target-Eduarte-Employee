@@ -50,12 +50,14 @@ function Get-EduarteEmployeeMetGebruikersnaam {
 
             if ([String]::IsNullOrEmpty($medewerker)) {
                 return $null
-            } else {
+            }
+            else {
                 Write-Information "Correlated Eduarte-employee (medewerker) for: [$($userName)]"
 
                 return $medewerker
             }
-        } catch {
+        }
+        catch {
             throw $_
         }
     }
@@ -104,16 +106,17 @@ function Get-EduarteMedewerkerMetAfkorting {
 
             if ([String]::IsNullOrEmpty($medewerker)) {
                 return $null
-            } else {
+            }
+            else {
                 Write-Verbose "Correlated Eduarte employee for: [$($Afkorting)]"
                 return $medewerker
             }
-        } catch {
+        }
+        catch {
             throw $_
         }
     }
 }
-
 
 function New-EduarteEmployee {
     [CmdletBinding()]
@@ -165,11 +168,13 @@ function New-EduarteEmployee {
 
             if ([String]::IsNullOrEmpty($medewerker)) {
                 return $null
-            } else {
+            }
+            else {
                 Write-Information "Created Eduarte-employee (medewerker) for: [$($Account.afkorting)]"
                 return $medewerker
             }
-        } catch {
+        }
+        catch {
             throw $_
         }
     }
@@ -227,14 +232,17 @@ function New-EduarteUser {
                 }
 
                 return $User.gebruikernaam
-            } catch {
+            }
+            catch {
                 if ($_.ErrorDetails -match "heeft reeds een account") {
                     throw "Could not create Eduarte-user (gebruiker) account '$($User.gebruikernaam)'. Medewerker already has an (other) account: $($_.ErrorDetails)"
-                } else {
+                }
+                else {
                     throw $_.ErrorDetails
                 }
             }
-        } catch {
+        }
+        catch {
             throw $_
         }
     }
@@ -254,17 +262,20 @@ function Sort-EduartePSCustomObjectProperties {
         $value = $InputObject.$property
         if ($value -is [PSCustomObject]) {
             $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue (Sort-EduartePSCustomObjectProperties -InputObject $value)
-        } elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+        }
+        elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
             $sortedArray = @()
             foreach ($item in $value) {
                 if ($item -is [PSCustomObject]) {
                     $sortedArray += Sort-EduartePSCustomObjectProperties -InputObject $item
-                } else {
+                }
+                else {
                     $sortedArray += $item
                 }
             }
             $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue $sortedArray
-        } else {
+        }
+        else {
             $sortedObject | Add-Member -NotePropertyName $property -NotePropertyValue $value
         }
     }
@@ -293,7 +304,8 @@ function Write-ToXmlDocument {
         foreach ($prop in $Properties.PSObject.Properties) {
             $ParameterList[$prop.Name] = $prop.Value
         }
-    } else {
+    }
+    else {
         $ParameterList = $Properties
     }
     foreach ($param in $ParameterList.GetEnumerator()) {
@@ -301,7 +313,8 @@ function Write-ToXmlDocument {
             $parent = $XmlDocument.CreateElement($param.Name)
             $ParameterList[$param.Name] | Write-ToXmlDocument -XmlDocument  $XmlDocument -XmlParentDocument $parent
             $null = $XmlParentDocument.AppendChild($parent)
-        } else {
+        }
+        else {
             $child = $XmlDocument.CreateElement($param.Name)
             $null = $child.InnerText = "$($param.Value)"
             $null = $XmlParentDocument.AppendChild($child)
@@ -333,7 +346,8 @@ function Add-XmlElement {
             $child = $XmlParentDocument.OwnerDocument.CreateElement($ElementName)
             $null = $child.InnerText = "$ElementValue"
             $null = $XmlParentDocument.AppendChild($child)
-        } catch {
+        }
+        catch {
             $PSCmdlet.ThrowTerminatingError($_)
         }
     }
@@ -395,7 +409,8 @@ function Resolve-Eduarte-EmployeeError {
         if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
             $httpErrorObj.FriendlyMessage = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException' -and (-not [string]::IsNullOrEmpty($ErrorObject.Exception.Response))) {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException' -and (-not [string]::IsNullOrEmpty($ErrorObject.Exception.Response))) {
             $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
             if ( $streamReaderResponse ) {
                 $httpErrorObj.ErrorDetails = $streamReaderResponse
@@ -413,6 +428,10 @@ try {
         id   = 'Currently not available'
         user = 'Currently not available'
     }
+
+    # Fields are mapped bydefault with none, but are required.
+    $actionContext.Data | Add-Member -NotePropertyName 'id' -NotePropertyValue $null -Force
+    $actionContext.Data.gebruiker | Add-Member -NotePropertyName 'medewerker' -NotePropertyValue $null -Force
 
     # Extra mapping to ensure the properties are in alphabetical order
     $account = Sort-EduartePSCustomObjectProperties -InputObject $actionContext.Data
@@ -439,12 +458,13 @@ try {
 
         if ($correlationField -eq 'afkorting') {
             $correlatedEmployeeAccount = Get-EduarteMedewerkerMetAfkorting -Afkorting $correlationValue
-        } elseif ($correlationField -eq 'gebruikersnaam') {
+        }
+        elseif ($correlationField -eq 'gebruikersnaam') {
             $correlatedEmployeeAccount = Get-EduarteEmployeeMetGebruikersnaam -userName $correlationValue
-        } else {
+        }
+        else {
             throw "No valid correlate implementation found for correlationField [$($correlationField )]"
         }
-
 
         $account.id = $correlatedEmployeeAccount.id
         $account.gebruiker.medewerker = $correlatedEmployeeAccount.id
@@ -453,7 +473,8 @@ try {
             $correlatedUserAccount = $true
             if ($null -eq $correlatedEmployeeAccount.gebruikersnaam ) {
                 $correlatedUserAccount = $false
-            } elseif ($account.gebruiker.gebruikernaam -ne $correlatedEmployeeAccount.gebruikersnaam ) {
+            }
+            elseif ($account.gebruiker.gebruikernaam -ne $correlatedEmployeeAccount.gebruikersnaam ) {
                 Write-Warning "HelloID provided username [$($account.gebruiker.gebruikernaam)] differs from the existing username [$($correlatedEmployeeAccount.gebruikersnaam)] of the correlated account"
             }
         }
@@ -461,11 +482,15 @@ try {
     # Verify if a user must be either [created] or just [correlated]
     if (($null -ne $correlatedEmployeeAccount) -and ($correlatedUserAccount -eq $true)) {
         $action = 'CorrelateAccount'
-    } elseif ($null -ne $correlatedEmployeeAccount -and ($correlatedUserAccount -eq $false)) {
+    }
+    elseif ($null -ne $correlatedEmployeeAccount -and ($correlatedUserAccount -eq $false)) {
         $action = 'CreateUser'
-    } else {
+    }
+    else {
         $action = 'CreateAccount'
     }
+
+    Write-Information "determined action: [$action]"
 
     # Add a message and the result of each of the validations showing what will happen during enforcement
     if ($actionContext.DryRun -eq $true) {
@@ -480,12 +505,10 @@ try {
 
                 $accountWithoutUser = ($account | Select-Object -Property * -ExcludeProperty gebruiker)
                 $employee = New-EduarteEmployee -Account $accountWithoutUser
-
                 if ($null -eq $employee) {
                     throw "Executing New-EduarteEmployee function failed. Check process logging"
                 }
                 $null = New-EduarteUser -Employee $employee -User $account.gebruiker
-
                 $outputContext.AccountReference = [pscustomobject]@{
                     id   = $employee.id
                     user = $account.gebruiker.gebruikernaam
@@ -501,7 +524,7 @@ try {
                         Message = "Creating Eduarte-user (gebruiker) account was successful. AccountReference is: [$($outputContext.AccountReference.User)]"
                         IsError = $false
                     })
-                $outputContext.Data = $employee
+                $outputContext.Data = $employee[0]
                 break
             }
 
@@ -517,13 +540,13 @@ try {
                         IsError = $false
                     })
 
-                $outputContext.Data = $correlatedEmployeeAccount
+                $outputContext.Data = $correlatedEmployeeAccount[0]
                 break
             }
 
             'CorrelateAccount' {
                 Write-Information 'Correlating Eduarte-employee (medewerker) account'
-                $outputContext.Data = $correlatedEmployeeAccount
+                $outputContext.Data = $correlatedEmployeeAccount[0]
                 $outputContext.AccountReference = [pscustomobject]@{
                     id   = $correlatedEmployeeAccount.id
                     user = $account.gebruiker.gebruikernaam
@@ -540,7 +563,8 @@ try {
         }
     }
     $outputContext.success = $true
-} catch {
+}
+catch {
     $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -548,7 +572,8 @@ try {
         $errorObj = Resolve-Eduarte-EmployeeError -ErrorObject $ex
         $auditMessage = "Could not create or correlate Eduarte-employee (medewerker) account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Could not create or correlate Eduarte-employee (medewerker) account. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }

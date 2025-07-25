@@ -239,20 +239,29 @@ try {
     $outputContext.success = $true
 }
 catch {
-    $outputContext.success = $false
     $ex = $PSItem
-    if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
-        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-Eduarte-EmployeeError -ErrorObject $ex
-        $auditMessage = "Could not create or correlate Eduarte-employee (medewerker) account. Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+    if ($ex.ErrorDetails.Message -eq 'soap:ClientGebruiker met gegeven gebruikersnaam niet gevonden voor organisatie met gegeven apiSleutel.') {
+        $outputContext.success = $true
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "Skipped revoking permission with name [$($actionContext.References.Permission.Name)]. Account with userName [$($actionContext.References.Account.user)] can not be found."
+                IsError = $false
+            })
     }
     else {
-        $auditMessage = "Could not create or correlate Eduarte-employee (medewerker) account. Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $outputContext.success = $false
+        if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+            $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+            $errorObj = Resolve-Eduarte-EmployeeError -ErrorObject $ex
+            $auditMessage = "Could not revoke role [$($actionContext.References.Permission.Name)] from account with userName [$($actionContext.References.Account.user)]. Error: $($errorObj.FriendlyMessage)"
+            Write-Verbose "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        }
+        else {
+            $auditMessage = "Could not revoke role [$($actionContext.References.Permission.Name)] from account with userName [$($actionContext.References.Account.user)]. Error: $($ex.Exception.Message)"
+            Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        }
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = $auditMessage
+                IsError = $true
+            })
     }
-    $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
-            IsError = $true
-        })
 }

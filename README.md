@@ -14,6 +14,7 @@
   - [Table of contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Getting started](#getting-started)
+    - [HelloID Icon URL](#helloid-icon-url)
     - [Provisioning PowerShell V2 connector](#provisioning-powershell-v2-connector)
       - [Correlation configuration](#correlation-configuration)
       - [Field mapping](#field-mapping)
@@ -49,6 +50,13 @@ The following lifecycle events are available:
 | fieldMapping.json                      | Default _fieldMapping.json_                         |
 
 ## Getting started
+
+### HelloID Icon URL
+URL of the icon used for the HelloID Provisioning target system.
+
+```
+https://raw.githubusercontent.com/Tools4everBV/HelloID-Conn-Prov-Target-Eduarte-Employee/refs/heads/main/Icon.png
+```
 
 ### Provisioning PowerShell V2 connector
 
